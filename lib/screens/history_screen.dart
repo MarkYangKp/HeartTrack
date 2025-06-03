@@ -92,6 +92,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
           const SizedBox(height: 20),
           HealthChart(data: _healthData, type: 'oxygenSaturation'),
           const SizedBox(height: 20),
+          HealthChart(data: _healthData, type: 'bloodPressure'),
+          const SizedBox(height: 20),
           _buildDataList(),
         ],
       ),

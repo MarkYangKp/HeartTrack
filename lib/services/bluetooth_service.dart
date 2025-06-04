@@ -182,8 +182,8 @@ class BluetoothService {
     }
     
     if (readableCharacteristics.isEmpty) {
-      print('没有找到可读特征，启动模拟数据');
-      startDataSimulation();
+      print('没有找到可读特征，连接失败');
+      _isConnected = false;
       return;
     }
     
@@ -228,31 +228,8 @@ class BluetoothService {
 
   // 启动数据模拟（用于测试）
   void startDataSimulation() {
-    if (!_isConnected) return;
-    
-    // 如果有真实设备连接，优先使用真实数据
-    if (_targetCharacteristic != null) {
-      print('正在使用真实设备数据');
-      return;
-    }
-    
-    // 否则使用模拟数据
-    print('正在使用模拟数据');
-    _simulationTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
-      if (!_isConnected) {
-        timer.cancel();
-        return;
-      }
-      
-      final random = Random();
-      final healthData = HealthData(
-        heartRate: 60 + random.nextInt(40), // 60-100 BPM
-        oxygenSaturation: 95 + random.nextInt(5), // 95-99%
-        timestamp: DateTime.now(),
-      );
-      
-      _dataController.add(healthData);
-    });
+    // 移除模拟数据功能
+    print('模拟数据功能已禁用');
   }
 
   // 处理真实蓝牙数据的方法

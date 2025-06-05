@@ -16,9 +16,12 @@ class _MonitorScreenState extends State<MonitorScreen>
   final BluetoothService _bluetoothService = BluetoothService();
   final DatabaseService _databaseService = DatabaseService();
   StreamSubscription<HealthData>? _dataSubscription;
+  StreamSubscription<String>? _debugSubscription; // 添加debug订阅
   
   HealthData? _currentData;
   bool _isMonitoring = false;
+  bool _showDebug = false; // 控制debug区域显示
+  List<String> _debugMessages = []; // 存储debug消息
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
 
@@ -32,23 +35,53 @@ class _MonitorScreenState extends State<MonitorScreen>
     _pulseAnimation = Tween<double>(begin: 0.8, end: 1.2).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
+    
+    // 监听debug信息流
+    _debugSubscription = _bluetoothService.debugStream.listen((message) {
+      setState(() {
+        _debugMessages.add(message);
+        // 限制消息数量，避免内存溢出
+        if (_debugMessages.length > 100) {
+          _debugMessages.removeAt(0);
+        }
+      });
+    });
   }
 
   @override
   void dispose() {
     _pulseController.dispose();
     _dataSubscription?.cancel();
+    _debugSubscription?.cancel(); // 取消debug订阅
     super.dispose();
   }
 
   Future<void> _startMonitoring() async {
     if (!_bluetoothService.isConnected) {
+      // 显示连接进度
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('正在连接设备 C4:24:06:02:12:1A...'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      
       bool connected = await _bluetoothService.connectToDevice();
       if (!connected) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('设备连接失败')),
+          const SnackBar(
+            content: Text('设备连接失败 (地址: C4:24:06:02:12:1A)'),
+            backgroundColor: Colors.red,
+          ),
         );
         return;
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('设备连接成功!'),
+            backgroundColor: Colors.green,
+          ),
+        );
       }
     }
 
@@ -77,6 +110,20 @@ class _MonitorScreenState extends State<MonitorScreen>
         backgroundColor: Colors.transparent,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.cyan),
+        actions: [
+          // 添加debug切换按钮
+          IconButton(
+            onPressed: () {
+              setState(() {
+                _showDebug = !_showDebug;
+              });
+            },
+            icon: Icon(
+              _showDebug ? Icons.bug_report : Icons.bug_report_outlined,
+              color: _showDebug ? Colors.green : Colors.cyan,
+            ),
+          ),
+        ],
       ),
       body: Container(
         decoration: BoxDecoration(
@@ -96,12 +143,133 @@ class _MonitorScreenState extends State<MonitorScreen>
                 _buildStatusCard(),
                 const SizedBox(height: 30),
                 _buildDataCards(),
+                if (_showDebug) ...[
+                  const SizedBox(height: 20),
+                  _buildDebugArea(),
+                ],
                 const Spacer(),
                 _buildControlButton(),
               ],
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  // 添加debug信息显示区域
+  Widget _buildDebugArea() {
+    return Container(
+      height: 200,
+      decoration: BoxDecoration(
+        color: Colors.grey[900]?.withOpacity(0.9),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.green.withOpacity(0.3)),
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.green.withOpacity(0.1),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(12),
+                topRight: Radius.circular(12),
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Debug信息',
+                  style: TextStyle(
+                    color: Colors.green,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Row(
+                  children: [
+                    Text(
+                      '${_debugMessages.length}条',
+                      style: TextStyle(
+                        color: Colors.green.withOpacity(0.7),
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _debugMessages.clear();
+                        });
+                        _bluetoothService.clearDebugMessages();
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: Colors.red.withOpacity(0.5)),
+                        ),
+                        child: const Text(
+                          '清除',
+                          style: TextStyle(
+                            color: Colors.red,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: _debugMessages.isEmpty
+                ? const Center(
+                    child: Text(
+                      '暂无调试信息',
+                      style: TextStyle(
+                        color: Colors.grey,
+                        fontSize: 14,
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    reverse: true, // 最新消息在底部
+                    padding: const EdgeInsets.all(8),
+                    itemCount: _debugMessages.length,
+                    itemBuilder: (context, index) {
+                      final reverseIndex = _debugMessages.length - 1 - index;
+                      final message = _debugMessages[reverseIndex];
+                      
+                      // 根据消息类型设置颜色
+                      Color messageColor = Colors.white;
+                      if (message.contains('错误') || message.contains('失败')) {
+                        messageColor = Colors.red;
+                      } else if (message.contains('成功') || message.contains('✓')) {
+                        messageColor = Colors.green;
+                      } else if (message.contains('发现') || message.contains('数据')) {
+                        messageColor = Colors.cyan;
+                      }
+                      
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 1),
+                        child: Text(
+                          message,
+                          style: TextStyle(
+                            color: messageColor,
+                            fontSize: 11,
+                            fontFamily: 'monospace',
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
       ),
     );
   }

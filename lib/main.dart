@@ -12,7 +12,7 @@ class HealthMonitorApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '健康监测',
+      title: '智能健康监测',
       theme: ThemeData(
         primarySwatch: Colors.cyan,
         brightness: Brightness.dark,

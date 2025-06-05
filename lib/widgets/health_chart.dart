@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:intl/intl.dart';
 import '../models/health_data.dart';
 
 class HealthChart extends StatelessWidget {
@@ -14,6 +15,30 @@ class HealthChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (data.isEmpty) {
+      return Container(
+        height: 300,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.black.withOpacity(0.8),
+              Colors.grey[900]!.withOpacity(0.8),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.cyan.withOpacity(0.3)),
+        ),
+        child: Center(
+          child: Text(
+            '暂无${type == 'heartRate' ? '心率' : '血氧'}数据',
+            style: TextStyle(color: Colors.grey[400], fontSize: 16),
+          ),
+        ),
+      );
+    }
+
     return Container(
       height: 300,
       decoration: BoxDecoration(
@@ -49,7 +74,7 @@ class HealthChart extends StatelessWidget {
                     show: true,
                     drawVerticalLine: true,
                     horizontalInterval: type == 'heartRate' ? 10 : 2,
-                    verticalInterval: 1,
+                    verticalInterval: _getVerticalInterval(),
                     getDrawingHorizontalLine: (value) {
                       return FlLine(
                         color: Colors.cyan.withOpacity(0.2),
@@ -70,8 +95,8 @@ class HealthChart extends StatelessWidget {
                     bottomTitles: AxisTitles(
                       sideTitles: SideTitles(
                         showTitles: true,
-                        reservedSize: 30,
-                        interval: 1,
+                        reservedSize: 40,
+                        interval: _getBottomTitleInterval(),
                         getTitlesWidget: bottomTitleWidgets,
                       ),
                     ),
@@ -100,6 +125,22 @@ class HealthChart extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  // 计算垂直网格线间隔
+  double _getVerticalInterval() {
+    if (data.length <= 5) return 1;
+    if (data.length <= 10) return 2;
+    if (data.length <= 20) return 4;
+    return (data.length / 5).ceil().toDouble();
+  }
+
+  // 计算底部标题间隔
+  double _getBottomTitleInterval() {
+    if (data.length <= 6) return 1;
+    if (data.length <= 12) return 2;
+    if (data.length <= 24) return 4;
+    return (data.length / 6).ceil().toDouble();
   }
 
   List<LineChartBarData> _getLineBarsData() {
@@ -150,14 +191,17 @@ class HealthChart extends StatelessWidget {
 
   double _getMinY() {
     if (type == 'heartRate') {
+      if (data.isEmpty) return 50;
       return data.map((e) => e.heartRate).reduce((a, b) => a < b ? a : b).toDouble() - 10;
     } else {
+      if (data.isEmpty) return 90;
       return data.map((e) => e.oxygenSaturation).reduce((a, b) => a < b ? a : b).toDouble() - 5;
     }
   }
 
   double _getMaxY() {
     if (type == 'heartRate') {
+      if (data.isEmpty) return 100;
       return data.map((e) => e.heartRate).reduce((a, b) => a > b ? a : b).toDouble() + 10;
     } else {
       return 100; // 血氧饱和度最大值为100%
@@ -177,17 +221,44 @@ class HealthChart extends StatelessWidget {
   }
 
   Widget bottomTitleWidgets(double value, TitleMeta meta) {
-    if (value.toInt() >= data.length) return const Text('');
+    final index = value.toInt();
+    if (index < 0 || index >= data.length) return const Text('');
+    
+    final timestamp = data[index].timestamp;
+    final timeFormat = _getTimeFormat();
+    final timeString = DateFormat(timeFormat).format(timestamp);
+    
     return Padding(
       padding: const EdgeInsets.only(top: 8.0),
-      child: Text(
-        '${value.toInt() + 1}',
-        style: TextStyle(
-          color: Colors.cyan.withOpacity(0.8),
-          fontWeight: FontWeight.bold,
-          fontSize: 12,
+      child: Transform.rotate(
+        angle: -0.5, // 轻微倾斜以节省空间
+        child: Text(
+          timeString,
+          style: TextStyle(
+            color: Colors.cyan.withOpacity(0.8),
+            fontWeight: FontWeight.bold,
+            fontSize: 10,
+          ),
+          textAlign: TextAlign.center,
         ),
       ),
     );
+  }
+
+  // 根据数据时间跨度选择合适的时间格式
+  String _getTimeFormat() {
+    if (data.isEmpty) return 'HH:mm';
+    
+    final firstTime = data.last.timestamp; // 数据是按时间倒序排列的
+    final lastTime = data.first.timestamp;
+    final duration = lastTime.difference(firstTime);
+    
+    if (duration.inHours < 24) {
+      return 'HH:mm'; // 同一天显示时:分
+    } else if (duration.inDays < 7) {
+      return 'MM-dd\nHH:mm'; // 一周内显示月-日 时:分
+    } else {
+      return 'MM-dd'; // 超过一周只显示月-日
+    }
   }
 }
